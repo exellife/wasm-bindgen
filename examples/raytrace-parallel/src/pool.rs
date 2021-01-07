@@ -20,6 +20,9 @@ pub struct WorkerPool {
 struct PoolState {
     workers: RefCell<Vec<Worker>>,
     callback: Closure<dyn FnMut(Event)>,
+    
+    // URL for the code to be executed by the Worker
+    blob_url: Result<String, JsValue>,
 }
 
 struct Work {
@@ -47,6 +50,9 @@ impl WorkerPool {
                     console_log!("unhandled event: {}", event.type_());
                     crate::logv(&event);
                 }) as Box<dyn FnMut(Event)>),
+                
+                // mod blob_url
+                blob_url: crate::str_to_blob_url(),
             }),
         };
         for _ in 0..initial {
@@ -74,7 +80,17 @@ impl WorkerPool {
         //   library, know what's going on?
         // * How do we not fetch a script N times? It internally then
         //   causes another script to get fetched N times...
-        let worker = Worker::new("./worker.js")?;
+        let worker: Worker;
+
+        if let Ok(blob_url) = &self.state.blob_url {
+            // it's possible to avoid fetching N times...
+            // if successfull 0 bytes transfered over the network
+            // see blob_url.rs file
+            console_log!("this blob URL {}", blob_url);
+            worker = Worker::new(&blob_url)?;
+        } else {
+            worker = Worker::new("./worker.js")?;
+        }
 
         // With a worker spun up send it the module/memory so it can start
         // instantiating the wasm module. Later it might receive further
